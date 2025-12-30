@@ -14,7 +14,6 @@ struct AccelerometerData {
 
 const int ITERATION_GROUP_SIZE = 5;
 const float MAX_DIFFERENCE = 0.9;
-const float MIN_LED_DURATION = 0.3;
 const float HIT_COOLDOWN = 0.5;
 
 int currentIteration = 0;
@@ -23,15 +22,12 @@ AccelerometerData currentMeanData;
 bool hasMean = false;
 
 unsigned long lastMillis = 0;
-float ledTimer = -1;
 
 uint16_t hue = 0;
 float hitCooldownTimer = -1;
 
 void setup() {
   Serial.begin(9600);
-  while (!Serial);
-  Serial.println("Started");
 
   strip.begin();
   strip.setBrightness(150);
@@ -47,15 +43,8 @@ void loop() {
   float deltaTime = (millis() - lastMillis) / 1000.0;
   lastMillis = millis();
 
-  if (ledTimer < 0) {
-    // Turn of led if needed
-  } else {
-    ledTimer -= deltaTime;
-  }
-
-  if (hitCooldownTimer > 0) {
+  if (hitCooldownTimer >= 0) {
     hitCooldownTimer -= deltaTime;
-    return;
   }
 
   if (!IMU.accelerationAvailable()) { return; }
@@ -77,18 +66,21 @@ void loop() {
       return;
     }
 
-    // Detect hit based on acceleration change
-    if (abs(newMeanData.x - currentMeanData.x) > MAX_DIFFERENCE ||
-        abs(newMeanData.y - currentMeanData.y) > MAX_DIFFERENCE ||
-        abs(newMeanData.z - currentMeanData.z) > MAX_DIFFERENCE)
+    float dx = abs(newMeanData.x - currentMeanData.x);
+    float dy = abs(newMeanData.y - currentMeanData.y);
+    float dz = abs(newMeanData.z - currentMeanData.z);
+    bool hasDetectedHit = dx > MAX_DIFFERENCE || dy > MAX_DIFFERENCE || dz > MAX_DIFFERENCE;
+    bool isAllowedToHit = hitCooldownTimer < 0;
+
+    if (hasDetectedHit && isAllowedToHit)
     {
-      ledTimer = MIN_LED_DURATION;
       hitCooldownTimer = HIT_COOLDOWN;
       hue += 32; // Shift hue for a visible color change
       hue %= 256;
 
+      uint16_t scaledHue = map(hue, 0, 255, 0, 65535);
       for (int i = 0; i < NUMPIXELS; i++) {
-        strip.setPixelColor(i, strip.ColorHSV(hue * 256)); // Adafruit uses 0-65535 for HSV
+        strip.setPixelColor(i, strip.ColorHSV(scaledHue));
       }
       strip.show();
     }
