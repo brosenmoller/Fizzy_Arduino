@@ -13,54 +13,54 @@ struct AccelerometerData {
   float z;
 };
 
-AccelerometerData currentDataGroup[ITERATION_GROUP_SIZE];
-AccelerometerData currentMeanData;
-int currentIteration = 0;
-
-bool hasMean = false;
-float hitCooldownTimer = -1;
-
-void setup_accelerometer() {
+void SetupAccelerometer() {
   if (!IMU.begin()) {
     Serial.println("Failed to initialize IMU!");
     while (1);
   }
 }
 
-AccelerometerData GetMeanOfCurrentDataGroup() {
+AccelerometerData GetMeanOfDataGroup(const AccelerometerData* dataGroup) 
+{
   AccelerometerData meanData = {0, 0, 0};
+
   for (int i = 0; i < ITERATION_GROUP_SIZE; i++) {
-    AccelerometerData data = currentDataGroup[i];
-    meanData.x += data.x;
-    meanData.y += data.y;
-    meanData.z += data.z;
+    meanData.x += dataGroup[i].x;
+    meanData.y += dataGroup[i].y;
+    meanData.z += dataGroup[i].z;
   }
+
   meanData.x /= ITERATION_GROUP_SIZE;
   meanData.y /= ITERATION_GROUP_SIZE;
   meanData.z /= ITERATION_GROUP_SIZE;
   return meanData;
 }
 
-bool has_ball_been_hit(float deltaTime) {
-  if (hitCooldownTimer >= 0) {
-    hitCooldownTimer -= deltaTime;
+bool HasBallBeenHit(float deltaTime) {
+  static AccelerometerData dataGroup[ITERATION_GROUP_SIZE];
+  static AccelerometerData meanData;
+  static int iteration = 0;
+  static bool hasMean = false;
+  static float cooldown = -1.0f;
+
+  if (cooldown >= 0) {
+    cooldown -= deltaTime;
   }
 
   if (!IMU.accelerationAvailable()) { return false; }
 
   float x, y, z;
   IMU.readAcceleration(x, y, z);
-  AccelerometerData data = {x, y, z};
-  currentDataGroup[currentIteration] = data;
+  dataGroup[currentIteration] = {x, y, z};
+  iteration++;
 
-  currentIteration++;
   if (currentIteration < ITERATION_GROUP_SIZE) { return false; }
 
-  currentIteration = 0;
-  AccelerometerData newMeanData = GetMeanOfCurrentDataGroup();
+  iteration = 0;
+  AccelerometerData newMeanData = GetMeanOfDataGroup(dataGroup);
 
   if (!hasMean) {
-    currentMeanData = newMeanData;
+    meanData = newMeanData;
     hasMean = true;
     return false;
   }
@@ -69,15 +69,15 @@ bool has_ball_been_hit(float deltaTime) {
   float dy = abs(newMeanData.y - currentMeanData.y);
   float dz = abs(newMeanData.z - currentMeanData.z);
   bool hasDetectedHit = dx > ACCELEROMETER_HIT_THRESHOLD || dy > ACCELEROMETER_HIT_THRESHOLD || dz > ACCELEROMETER_HIT_THRESHOLD;
-  bool isAllowedToHit = hitCooldownTimer < 0;
+  bool isAllowedToHit = cooldown < 0;
 
   if (hasDetectedHit && isAllowedToHit)
   {
-    hitCooldownTimer = HIT_COOLDOWN;
+    cooldown = HIT_COOLDOWN;
     return true;
   }
 
-  currentMeanData = newMeanData;
+  meanData = newMeanData;
   return false;
 }
 
